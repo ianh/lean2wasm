@@ -1,5 +1,5 @@
 import ImportGraph.Imports
-import Std.Lean.Util.Path
+import Lean.Util.Path
 import Lake
 
 open Lean System
@@ -23,9 +23,9 @@ unsafe def main : IO UInt32 := do
     let link := s!"{lean4_link}/v{Lean.versionString}/{wasm_tc}.tar.zst"
     let local_tar : FilePath := s!"{toolchain}.tar.zst"
 
-    let _ ← Lake.LogIO.captureLog do
-      let () ← Lake.download wasm_tc link local_tar
-      let () ← Lake.untar wasm_tc local_tar "toolchains"
+    let _ ← BaseIO.toIO <| Lake.LogIO.captureLog do
+      Lake.download link local_tar
+      Lake.untar local_tar "toolchains"
 
   IO.println "Finding relevant dependencies..."
   /- Find relevant C-files to compile, we don't want to compile everything
@@ -44,15 +44,15 @@ unsafe def main : IO UInt32 := do
         let sp ← searchPathRef.get
         let sp : Lean.SearchPath := sp.map (fun p => (p / ".." / "ir"))
 
-        let cfiles ← graph.toList.mapM (fun (mod, _) => do
+        let cfiles ← graph.toArray.flatMapM (fun (mod, _) => do
             -- copied/modified hacked from Lean.findOLean
             if let some fname ← sp.findWithExt "c" mod then
-              return fname
+              return #[fname]
             else
-              -- todo: make error msg better : )
-              throw <| IO.userError s!"Could not find C for {mod}"
+              IO.println s!"Could not find C for {mod}"
+              return #[]
           )
-        return cfiles.map toString |>.toArray
+        return cfiles.map toString
 
   IO.println s!"Found {c_array.size} files."
   IO.println "Compiling (this can take a while)..."
